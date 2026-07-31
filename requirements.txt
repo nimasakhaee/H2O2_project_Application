@@ -1,0 +1,18 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Requirements for Streamlite_NEW.py  —  Gradient Boosting H2O2 predictor
+# Pinned to the environment that built GradBoost_package.pkl (Python 3.10) so the
+# pickled scikit-learn pipeline loads online without version-mismatch warnings.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Core / model  (required to unpickle and run the GradientBoosting pipeline)
+scikit-learn==1.4.2
+numpy==2.2.6
+pandas==2.3.3
+joblib==1.5.3
+
+# Streamlit app + interactive figures
+streamlit==1.56.0
+plotly==6.5.0
+
+# Only needed to (re)build the package from the .xlsx via Package.py — not used by the app
+openpyxl==3.1.5
