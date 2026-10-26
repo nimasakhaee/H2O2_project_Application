@@ -4,15 +4,10 @@
 # pickled scikit-learn pipeline loads online without version-mismatch warnings.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Core / model  (required to unpickle and run the GradientBoosting pipeline)
-scikit-learn==1.4.2
-numpy==2.2.6
-pandas==2.3.3
-joblib==1.5.3
-
-# Streamlit app + interactive figures
-streamlit==1.56.0
-plotly==6.5.0
-
-# Only needed to (re)build the package from the .xlsx via Package.py — not used by the app
-openpyxl==3.1.5
+streamlit==1.38.0
+plotly==5.24.1
+xgboost==2.1.1
+scikit-learn==1.5.1
+pandas==2.2.2
+numpy==1.26.4
+joblib==1.4.2
