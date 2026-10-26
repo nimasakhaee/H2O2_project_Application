@@ -15,7 +15,7 @@ import streamlit as st
 import plotly.graph_objects as go
 warnings.filterwarnings("ignore")
 
-PKG_PATH = r"G:\My Drive\NEU\research\research\Kim project 3\NEW SYSTEM\Results\18- GUI\XGB_package.pkl"
+PKG_PATH = "XGB_package.pkl"
 PI_LEVEL = 0.90
 HR_MED, HR_LOW = 1.0, 3.0     # h/h* ≤ 1 → high; 1–3 → medium; > 3 → low confidence
 O2_SAT_MG_L = 8.26            # dissolved O2, air-saturated at 25 °C (mg O2/L)
