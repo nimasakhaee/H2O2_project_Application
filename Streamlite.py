@@ -1,12 +1,13 @@
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Streamlite.py — Streamlit app for the XGBoost H2O2 model (Kim project 3)
 # Run with :  streamlit run Streamlite.py
-# Requires :  H2O2_XGB_package.pkl (made by make_gui_package.py) in the same folder
+# Model    :  XGB_package.pkl is downloaded automatically from the GitHub release
+#             (v1.0) on first run, then loaded from disk.
 #             pip install streamlit plotly xgboost scikit-learn pandas numpy joblib
 # ══════════════════════════════════════════════════════════════════════════════
 import random
 import warnings
+import urllib.request
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ import plotly.graph_objects as go
 warnings.filterwarnings("ignore")
 
 PKG_PATH = "XGB_package.pkl"
+PKG_URL  = "https://github.com/nimasakhaee/H2O2_project_Application/releases/download/v1.0/XGB_package.pkl"
 PI_LEVEL = 0.90
 HR_MED, HR_LOW = 1.0, 3.0     # h/h* ≤ 1 → high; 1–3 → medium; > 3 → low confidence
 O2_SAT_MG_L = 8.26            # dissolved O2, air-saturated at 25 °C (mg O2/L)
@@ -23,6 +25,8 @@ F_ANODE     = 0.5             # anodic O2 (1 O2 per 4 e⁻) covers half the 2 e�
 
 # >>> CORE (prediction logic, no Streamlit calls) ──────────────────────────────
 def load_pkg(path):
+    if not Path(path).exists():
+        urllib.request.urlretrieve(PKG_URL, path)
     return joblib.load(path)
 
 def apply_preprocessor(X_a, pkg):
@@ -223,15 +227,15 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] > button p {{ color
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_resource(show_spinner="Loading model…")
+@st.cache_resource(show_spinner="Loading model (first run downloads ~250 MB)…")
 def get_pkg(path):
     return load_pkg(path)
 
 try:
     pkg = get_pkg(PKG_PATH)
-except FileNotFoundError:
-    st.error(f"**Package not found:** `{PKG_PATH}` — run `make_gui_package.py` first "
-             "and put the .pkl next to this script.")
+except Exception as ex:
+    st.error(f"**Could not load the model package** `{PKG_PATH}` from the GitHub release.\n\n"
+             f"URL: {PKG_URL}\n\nError: {ex}")
     st.stop()
 
 CAT, NUM = pkg['categorical_cols'], pkg['numeric_cols']
