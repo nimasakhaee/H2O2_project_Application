@@ -1,13 +1,13 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Requirements for Streamlite_NEW.py  —  Gradient Boosting H2O2 predictor
-# Pinned to the environment that built GradBoost_package.pkl (Python 3.10) so the
-# pickled scikit-learn pipeline loads online without version-mismatch warnings.
+# Requirements for Streamlite.py  —  XGBoost H2O2 predictor
+# Pinned to the environment that built XGB_package.pkl (Python 3.10.10).
+# Deploy on Streamlit Cloud with Python 3.10.
 # ══════════════════════════════════════════════════════════════════════════════
 
 streamlit==1.38.0
 plotly==5.24.1
-xgboost==2.1.1
-scikit-learn==1.5.1
-pandas==2.2.2
-numpy==1.26.4
+xgboost==3.0.0
+scikit-learn==1.6.1
+pandas==2.2.3
+numpy==1.24.4
 joblib==1.4.2
