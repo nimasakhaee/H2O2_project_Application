@@ -419,11 +419,14 @@ clicked = bcol.button("Predict H₂O₂ concentration", key="predict_btn")
 
 info = st.session_state.get('random_info')
 if info and info.get('error') == 'no_rows':
-    st.info("")
+    st.info("This package has no stored example rows; inputs were reset to the training defaults. "
+            "Re-run make_gui_package.py to enable the Random case button.")
 elif info and info.get('error'):
-    st.info("")
+    st.info("Could not build a random case; inputs were reset to the training defaults.")
 elif info:
-    st.caption("")
+    st.caption(f"Random case ({info['rtype']}): each input was taken from one of the "
+               f"{info['n_rows']} training records stored in the package, so this is a new "
+               "combination, not a measured experiment. Edit any input to change it.")
 
 if clicked:
     try:
