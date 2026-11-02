@@ -1,14 +1,16 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Streamlite.py — Streamlit app for the XGBoost H2O2 model (Kim project 3)
+# Streamlite.py — Streamlit app for the H2O2 model (Kim project 3)
 # Run with :  streamlit run Streamlite.py
-# Model    :  XGB_package.pkl is downloaded automatically from the GitHub release
-#             (v1.0) on first run, then loaded from disk.
-#             pip install streamlit plotly xgboost scikit-learn pandas numpy joblib
+# Requires :  H2O2_GPR_package.pkl (made by make_gui_package.py)
+#             pip install streamlit plotly scikit-learn pandas numpy joblib
+#   The app uses ONLY the package. The "Random case" button builds a new input
+#   case on every click by mixing values of the training rows stored in the
+#   package ('example_rows'): reactor type first, then every other input taken
+#   from a randomly chosen stored row (hydraulics from rows of the same reactor
+#   type). Anything missing or invalid falls back to the training defaults.
 # ══════════════════════════════════════════════════════════════════════════════
 import random
 import warnings
-import urllib.request
-from pathlib import Path
 import numpy as np
 import pandas as pd
 import joblib
@@ -16,8 +18,7 @@ import streamlit as st
 import plotly.graph_objects as go
 warnings.filterwarnings("ignore")
 
-PKG_PATH = "XGB_package.pkl"
-PKG_URL  = "https://github.com/nimasakhaee/H2O2_project_Application/releases/download/v1.0/XGB_package.pkl"
+PKG_PATH = r"G:\My Drive\NEU\research\research\Kim project 3\NEW SYSTEM\Results\18- GUI\GPR_package.pkl"
 PI_LEVEL = 0.90
 HR_MED, HR_LOW = 1.0, 3.0     # h/h* ≤ 1 → high; 1–3 → medium; > 3 → low confidence
 O2_SAT_MG_L = 8.26            # dissolved O2, air-saturated at 25 °C (mg O2/L)
@@ -25,8 +26,6 @@ F_ANODE     = 0.5             # anodic O2 (1 O2 per 4 e⁻) covers half the 2 e�
 
 # >>> CORE (prediction logic, no Streamlit calls) ──────────────────────────────
 def load_pkg(path):
-    if not Path(path).exists():
-        urllib.request.urlretrieve(PKG_URL, path)
     return joblib.load(path)
 
 def apply_preprocessor(X_a, pkg):
@@ -60,15 +59,18 @@ def faraday_bound(I_mA, t_min, V_mL, Q_mLmin, is_flow, pkg):
     return out
 
 def range_for(feat, rtype, pkg):
-    s = pkg['num_stats_by_type'][rtype].get(feat) or pkg['num_stats'].get(feat)
+    s = (pkg['num_stats_by_type'].get(rtype, {}) or {}).get(feat) or pkg['num_stats'].get(feat)
     return (s['min'], s['max'], s['median']) if s else (0.0, 1e6, 0.0)
+
+def _row_from_inputs(inputs, pkg):
+    d = {c: inputs[c] for c in pkg['categorical_cols'] + pkg['numeric_cols']}
+    d.update(pkg['binder_map'].get(inputs['Binder'], {b: 0 for b in pkg['binary_cols']}))
+    return d
 
 def predict_all(inputs, pkg):
     """inputs: dict with categorical values, 'Binder' label and numeric values."""
     rtype = 'Flow-through' if pkg['is_flow_type'].get(inputs[pkg['rt_col']], False) else 'Batch'
-    row = {c: inputs[c] for c in pkg['categorical_cols'] + pkg['numeric_cols']}
-    row.update(pkg['binder_map'].get(inputs['Binder'], {b: 0 for b in pkg['binary_cols']}))
-    X_raw = pd.DataFrame([row])[pkg['feature_cols']]
+    X_raw = pd.DataFrame([_row_from_inputs(inputs, pkg)])[pkg['feature_cols']]
     for c in pkg['numeric_cols'] + pkg['binary_cols']:
         X_raw[c] = pd.to_numeric(X_raw[c])
     Xp = apply_preprocessor(X_raw, pkg)
@@ -99,14 +101,14 @@ def predict_all(inputs, pkg):
                 h_ratio=hr, level=level,
                 faraday=fb, bound=bound, exceeds=exceeds, fe_implied=fe_implied,
                 combo_seen=combo_seen, unseen_pairs=unseen_pairs)
+
 def predict_curve(inputs, pkg, n_points=10):
     """Predictions at n_points times from 0 to the user's reaction time (C(0) = 0)."""
     T = float(inputs['Reaction time (min)'])
     t = np.linspace(0.0, T, n_points)
     rows = []
     for ti in t[1:]:
-        d = {c: inputs[c] for c in pkg['categorical_cols'] + pkg['numeric_cols']}
-        d.update(pkg['binder_map'].get(inputs['Binder'], {b: 0 for b in pkg['binary_cols']}))
+        d = _row_from_inputs(inputs, pkg)
         d['Reaction time (min)'] = ti
         rows.append(d)
     X_raw = pd.DataFrame(rows)[pkg['feature_cols']]
@@ -136,14 +138,12 @@ for _k, _v in {"theme.base": "light", "theme.textColor": "#1b1b19",
 st.set_page_config(page_title="H₂O₂ Production Predictor", page_icon="⚗", layout="wide",
                    initial_sidebar_state="expanded")
 INK, MUTED, LINE, PAPER, ACCENT = "#1b1b19", "#6f6d66", "#e4e2db", "#f7f6f2", "#0f6e63"
-C_TRAIN, C_VAL, C_TEST = "#bdbbb2", "#4a7fb5", "#0f6e63"
 LEVEL_COLORS = {'High': "#1a7f37", 'Medium': "#b7791f", 'Low': "#b3261e"}
-# light, journal-style section tints: (background, accent)
+# light, journal-style section tints: (header tint, accent, panel tint)
 SECTION_COLORS = [("#EAF1F8", "#3A6EA5", "#F5F9FC"),   # ① electrode — soft blue
                   ("#EEF5EC", "#4E8A4A", "#F7FBF6"),   # ② catalyst & binder — sage
                   ("#F8F2E6", "#A8742A", "#FCF9F3"),   # ③ reactor — sand
                   ("#F2EEF8", "#6B57A5", "#F9F7FC")]   # ④ electrolyte & operation — lavender
-                 # (header tint, accent, panel tint)
 
 st.markdown(f"""
 <style>
@@ -177,7 +177,6 @@ h1, h2, h3, h4 {{ font-family: 'Source Serif 4', serif !important; color: {INK};
     border-color: #6B57A533 !important; }}
 .result-label {{ font-size: 15px !important; letter-spacing: 1.4px !important; }}
 .result-sub {{ font-size: 16px !important; line-height: 1.55; }}
-.badge {{ font-size: 14px !important; padding: 4px 14px !important; }}
 .check {{ background:#ffffff; border:1px solid {LINE}; border-top: 4px solid; border-radius: 5px;
            padding: 14px 16px; height: 100%; }}
 .check-title {{ font-size: 12.5px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase;
@@ -193,8 +192,6 @@ h1, h2, h3, h4 {{ font-family: 'Source Serif 4', serif !important; color: {INK};
 .result-value {{ font-family:'Source Serif 4', serif; font-size: 52px; font-weight: 700; color:{INK}; line-height: 1; }}
 .result-unit {{ font-size: 15px; color:{MUTED}; margin-top: 4px; }}
 .result-sub {{ font-size: 13px; color:{INK}; margin-top: 12px; padding-top: 10px; border-top: 1px solid {LINE}; }}
-.badge {{ display:inline-block; padding: 4px 12px; border-radius: 12px; color:#fff; font-size: 12.5px;
-          font-weight: 600; letter-spacing: 0.4px; }}
 .sb-k {{ font-size: 12px; color:{MUTED}; text-transform: uppercase; letter-spacing: 1px; }}
 .sb-v {{ font-family:'Source Serif 4', serif; font-size: 15px; color:{INK}; margin-bottom: 12px; }}
 div[data-testid="stButton"] > button {{ background: {INK} !important; color: #fff !important;
@@ -223,25 +220,25 @@ ul[role="listbox"], li[role="option"] {{ background: #ffffff !important; color: 
 /* keep white text only where the background is dark */
 div[data-testid="stButton"] > button p {{ color: #ffffff !important; }}
 section[data-testid="stSidebar"] div[data-testid="stButton"] > button p {{ color: {INK} !important; }}
-.badge, .badge * {{ color: #ffffff !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_resource(show_spinner="Loading model (first run downloads ~250 MB)…")
+@st.cache_resource(show_spinner="Loading model…")
 def get_pkg(path):
     return load_pkg(path)
 
 try:
     pkg = get_pkg(PKG_PATH)
-except Exception as ex:
-    st.error(f"**Could not load the model package** `{PKG_PATH}` from the GitHub release.\n\n"
-             f"URL: {PKG_URL}\n\nError: {ex}")
+except FileNotFoundError:
+    st.error(f"**Package not found:** `{PKG_PATH}` — run `make_gui_package.py` first.")
     st.stop()
 
+MODEL_NAME = pkg.get('model_name', 'machine-learning')
 CAT, NUM = pkg['categorical_cols'], pkg['numeric_cols']
 FLOW, STIR, RT = pkg['flow_col'], pkg['stir_col'], pkg['rt_col']
 UNIT = pkg['unit']
 INT_FEATS = set(pkg['integer_cols'])
+HYDRAULIC = {FLOW, STIR, 'Reactor volume (mL)'}       # taken from rows of the same reactor type
 
 GROUPS = [
     ("① Electrode configuration", ['Anode', 'Cathode', 'Effective size (cm2)', 'Spacing (cm)']),
@@ -254,6 +251,13 @@ LABELS = {'Effective size (cm2)': 'Effective size (cm²)'}
 
 def rtype_of(v):
     return 'Flow-through' if pkg['is_flow_type'].get(v, False) else 'Batch'
+
+def _safe_float(v, default):
+    try:
+        v = float(v)
+        return v if np.isfinite(v) else default
+    except (TypeError, ValueError):
+        return default
 
 # ── session defaults: training medians / most frequent category ───────────────
 def set_defaults(force=False):
@@ -268,26 +272,57 @@ def set_defaults(force=False):
             st.session_state[f'inp_{f}'] = float(range_for(f, rt, pkg)[2])
 set_defaults()
 
-# ── "Random record": fill every input from one real training record ──────────
-def load_random_record():
-    ex = pkg.get('example_rows')
-    if ex is None or len(ex) == 0:
-        st.session_state['loaded_record'] = None
-        return
-    i = random.randrange(len(ex))
-    r = ex.iloc[i]
-    for c in CAT:
-        v = str(r[c]) if pd.notna(r[c]) else pkg['cat_modes'][c]
-        st.session_state[f'inp_{c}'] = v if v in pkg['cat_values'][c] else pkg['cat_modes'][c]
-    st.session_state['inp_Binder'] = (r['Binder'] if r['Binder'] in pkg['binder_options']
-                                      else pkg['binder_default'])
-    rt = rtype_of(st.session_state[f'inp_{RT}'])
-    for f in NUM:
-        lo, hi, med = range_for(f, rt, pkg)
-        v = float(r[f]) if pd.notna(r[f]) else med                 # missing → training median
-        st.session_state[f'inp_{f}'] = float(min(max(v, lo), hi))
-    st.session_state['loaded_record'] = {'row': i, 'title': str(r.get('_title', '')),
-                                         'observed': float(r.get('_observed', np.nan))}
+# ── "Random case": mix values of the stored example rows ──────────────────────
+def load_random_mix():
+    """Button callback (runs before widgets are drawn → safe to set widget state).
+    Never raises: missing / invalid values fall back to the training defaults."""
+    try:
+        ex = pkg.get('example_rows')
+        if ex is None or len(ex) == 0:
+            set_defaults(force=True)
+            st.session_state['random_info'] = {'error': 'no_rows'}
+            return
+        ex = ex.reset_index(drop=True)
+
+        def pick(col, rows):
+            """Value of `col` from a random row of `rows` (skips missing values)."""
+            if col not in rows.columns:
+                return None
+            vals = rows[col].dropna()
+            return None if vals.empty else vals.iloc[random.randrange(len(vals))]
+
+        # 1) reactor type from a random stored row
+        rt_val = pick(RT, ex)
+        rt_val = str(rt_val) if rt_val is not None else pkg['cat_modes'][RT]
+        if rt_val not in pkg['cat_values'][RT]:
+            rt_val = pkg['cat_modes'][RT]
+        st.session_state[f'inp_{RT}'] = rt_val
+        rtype = rtype_of(rt_val)
+        same = ex[ex[RT].astype(str).map(rtype_of) == rtype] if RT in ex.columns else ex
+        if same.empty:
+            same = ex
+
+        # 2) other categoricals and binder, each from its own random row
+        for c in CAT:
+            if c == RT:
+                continue
+            v = pick(c, ex)
+            v = str(v) if v is not None else pkg['cat_modes'][c]
+            st.session_state[f'inp_{c}'] = v if v in pkg['cat_values'][c] else pkg['cat_modes'][c]
+        b = pick('Binder', ex)
+        b = str(b) if b is not None else pkg['binder_default']
+        st.session_state['inp_Binder'] = b if b in pkg['binder_options'] else pkg['binder_default']
+
+        # 3) numerics, each from its own random row (hydraulics: same reactor type)
+        for f in NUM:
+            lo, hi, med = range_for(f, rtype, pkg)
+            v = _safe_float(pick(f, same if f in HYDRAULIC else ex), med)
+            st.session_state[f'inp_{f}'] = float(min(max(v, lo), hi))
+
+        st.session_state['random_info'] = {'n_rows': len(ex), 'rtype': rtype}
+    except Exception:
+        set_defaults(force=True)
+        st.session_state['random_info'] = {'error': 'failed'}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
@@ -295,9 +330,16 @@ def load_random_record():
 with st.sidebar:
     if st.button("Reset to defaults", key="reset_btn"):
         set_defaults(force=True)
-        st.session_state.pop('loaded_record', None)
+        st.session_state.pop('random_info', None)
         st.rerun()
     st.caption("Defaults are training medians; inputs are limited to the training range.")
+    st.markdown(f'<div class="sb-k">Model</div><div class="sb-v">{MODEL_NAME}</div>',
+                unsafe_allow_html=True)
+    tm = pkg.get('test_metrics', {})
+    if tm:
+        st.markdown(f'<div class="sb-k">Held-out test R²</div><div class="sb-v">{tm.get("R2", np.nan):.3f}</div>'
+                    f'<div class="sb-k">Held-out test RMSE</div><div class="sb-v">{tm.get("RMSE", np.nan):.2f} {UNIT}</div>',
+                    unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MASTHEAD
@@ -305,7 +347,7 @@ with st.sidebar:
 st.markdown(
     '<div class="masthead"><div class="eyebrow">Electrochemical hydrogen peroxide production</div>'
     '<h1 class="page-title">Data-driven prediction of H₂O₂ concentration</h1></div>'
-    '<p class="page-subtitle">An XGBoost regression model relating reactor configuration, '
+    f'<p class="page-subtitle">A {MODEL_NAME} regression model relating reactor configuration, '
     'electrode chemistry and operating conditions to the H₂O₂ concentration reached at the '
     'specified reaction time. Specify the experimental parameters below to obtain the predicted '
     'concentration, a 90% prediction interval, the Faraday upper bound and a confidence rating '
@@ -315,7 +357,6 @@ st.markdown(
 # INPUTS
 # ══════════════════════════════════════════════════════════════════════════════
 inputs = {}
-rt_now = rtype_of(st.session_state[f'inp_{RT}'])
 
 def num_widget(feat, rtype):
     label = LABELS.get(feat, feat)
@@ -333,7 +374,7 @@ def num_widget(feat, rtype):
         return 0.0
     lo, hi, med = range_for(feat, rtype, pkg)
     key = f'inp_{feat}'
-    v = st.session_state.get(key, med)
+    v = _safe_float(st.session_state.get(key, med), med)
     st.session_state[key] = float(min(max(v, lo), hi))        # keep inside the training range
     is_int = feat in INT_FEATS
     return st.number_input(f"{label}  [{lo:g} – {hi:g}]", min_value=float(lo), max_value=float(hi),
@@ -353,8 +394,12 @@ def render(container, title, feats):
                     f'<span style="color:{acc}">▪</span>{title}</div>', unsafe_allow_html=True)
         for feat in feats:
             if feat == 'Binder':
+                if st.session_state.get('inp_Binder') not in pkg['binder_options']:
+                    st.session_state['inp_Binder'] = pkg['binder_default']
                 inputs['Binder'] = st.selectbox("Binder", pkg['binder_options'], key='inp_Binder')
             elif feat in CAT:
+                if st.session_state.get(f'inp_{feat}') not in pkg['cat_values'][feat]:
+                    st.session_state[f'inp_{feat}'] = pkg['cat_modes'][feat]
                 inputs[feat] = st.selectbox(feat, pkg['cat_values'][feat], key=f'inp_{feat}')
             else:
                 inputs[feat] = num_widget(feat, rtype_of(inputs.get(RT, st.session_state[f'inp_{RT}'])))
@@ -369,14 +414,19 @@ render(cols[0], *GROUPS[2]); render(cols[1], *GROUPS[3])
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("<br>", unsafe_allow_html=True)
 _, rcol, bcol, _ = st.columns([0.7, 1.3, 1.6, 0.7])
-rcol.button("Random record from the data", key="rand_btn", on_click=load_random_record)
+rcol.button("Random case", key="rand_btn", on_click=load_random_mix)
 clicked = bcol.button("Predict H₂O₂ concentration", key="predict_btn")
-rec = st.session_state.get('loaded_record')
-if rec:
-    st.caption(f"Inputs loaded from training record #{rec['row'] + 1}"
-               + (f" — {rec['title'][:90]}" if rec['title'] else "")
-               + (f" · observed H₂O₂ = {rec['observed']:,.2f} {UNIT}" if np.isfinite(rec['observed']) else "")
-               + ". Editing any input afterwards changes the case.")
+
+info = st.session_state.get('random_info')
+if info and info.get('error') == 'no_rows':
+    st.info("This package has no stored example rows; inputs were reset to the training defaults. "
+            "Re-run make_gui_package.py to enable the Random case button.")
+elif info and info.get('error'):
+    st.info("Could not build a random case; inputs were reset to the training defaults.")
+elif info:
+    st.caption(f"Random case ({info['rtype']}): each input was taken from one of the "
+               f"{info['n_rows']} training records stored in the package, so this is a new "
+               "combination, not a measured experiment. Edit any input to change it.")
 
 if clicked:
     try:
@@ -385,10 +435,6 @@ if clicked:
         st.error(f"Prediction failed: {ex}")
         st.stop()
     t_lab = f"{float(inputs['Reaction time (min)']):g} min"
-    obs_html = ""
-    if rec and np.isfinite(rec['observed']):
-        obs_html = ('<div class="result-sub"><b>Observed in loaded record:</b> '
-                    + f"{rec['observed']:,.2f} {UNIT}</div>")
 
     _, rc, _ = st.columns([0.6, 2.8, 0.6])
     with rc:
@@ -399,7 +445,6 @@ if clicked:
           <div class="result-unit">{UNIT}</div>
           <div class="result-sub"><b>{int(100*PI_LEVEL)}% prediction interval:</b>
                {r['lo']:,.2f} – {r['hi']:,.2f} {UNIT} &nbsp;(÷/× {r['f']:.2f})</div>
-          {obs_html}
         </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -496,8 +541,9 @@ if clicked:
             fig.add_trace(go.Scatter(x=[0, T_end], y=[fb_sp, fb_sp], mode='lines',
                                      name='Faraday limit (100% FE), single pass',
                                      line=dict(color='#D62728', width=2, dash='dash')))
-        top = float(np.nanmax(chi)) * 1.25
-        lim_end = np.nanmax([v for v in [fb_vol[-1], fb_sp] if v is not None])
+        top = max(float(np.nanmax(chi)) * 1.25, 1e-6)
+        lim_vals = [v for v in [fb_vol[-1], fb_sp] if v is not None and np.isfinite(v)]
+        lim_end = max(lim_vals) if lim_vals else np.nan
         y_max = max(top, min(lim_end * 1.05, 3 * top)) if np.isfinite(lim_end) else top
         axis = dict(showline=True, linecolor=INK, mirror=True, ticks='outside', showgrid=True,
                     gridcolor='#ecebe6', zeroline=False, tickfont=dict(size=13, color=INK),
@@ -511,7 +557,7 @@ if clicked:
                                       font=dict(size=13, color=INK)))
         st.markdown("#### Predicted time course")
         st.plotly_chart(fig, use_container_width=True)
-        st.markdown(f'<div class="note">Model predictions at 10 equally spaced times from 0 to '
+        st.markdown(f'<div class="note">{MODEL_NAME} predictions at 10 equally spaced times from 0 to '
                     f'{T_end:g} min (C = 0 at t = 0), all other inputs fixed. The shaded band is the '
                     f'{int(100*PI_LEVEL)}% prediction interval; the red line is the maximum H₂O₂ the '
                     'charge passed can produce (100% Faradaic efficiency). For batch reactors the purple line '
